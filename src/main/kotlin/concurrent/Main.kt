@@ -1,0 +1,218 @@
+package de.maiker.concurrent
+
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import java.nio.ByteBuffer
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
+
+
+// store numbers as int to save memory
+data class StationData(
+    var count: Int,
+    var sum: Int,
+    var min: Int,
+    var max: Int
+) {
+    constructor(value: Int) : this(1, value, value, value)
+
+    fun update(value: Int) {
+        count++
+        sum += value
+
+        if (value < min) {
+            min = value
+        }
+        if (value > max) {
+            max = value
+        }
+    }
+
+    override fun toString(): String {
+        return "%.1f/%.1f/%.1f".format(min / 10.0, sum / 10.0 / count, max / 10.0)
+    }
+}
+
+class Result {
+    private val result = HashMap<String, StationData>(10000, 1f)
+
+    fun add(station: String, number: Int) {
+        if (!result.contains(station)) {
+            result[station] = StationData(number)
+        } else {
+            result[station]!!.update(number)
+        }
+    }
+
+    fun merge(other: Result) {
+        other.result.forEach { (station, data) ->
+            result.merge(station, data) { a, b ->
+                a.count += b.count
+                a.sum += b.sum
+                a.min = if (a.min < b.min) a.min else b.min
+                a.max = if (a.max > b.max) a.max else b.max
+                a
+            }
+        }
+    }
+
+    override fun toString(): String {
+        return result
+            .entries
+            .sortedBy { it.key }
+            .joinToString(
+                separator = ", ",
+                prefix = "{",
+                postfix = "}"
+            ) { (station, data) ->
+                "$station=${data}"
+            }
+    }
+
+    fun size(): Int {
+        return result.size
+    }
+}
+
+// find the position of the next line break
+fun findNextEndOfLine(channel: FileChannel, position: Long): Long {
+    var pos = position
+
+    // create a buffer to hold the current byte
+    val buffer = ByteBuffer.allocate(1)
+
+    while (pos < channel.size()) {
+        // read the next byte
+        channel.read(buffer, pos)
+
+        pos++
+
+        // check if the byte is a line break
+        if (buffer.get(0).toInt().toChar() == '\n') {
+            return pos
+        }
+
+        buffer.clear()
+    }
+
+    return channel.size()
+}
+
+fun getBuffers(channel: FileChannel, chunks: Int): Array<MappedByteBuffer> {
+    val chunkSize = channel.size() / chunks
+
+    var position = 0L
+    val buffers = Array<MappedByteBuffer>(chunks) {
+        val endPosition = findNextEndOfLine(channel, position + chunkSize)
+        val size = endPosition - position
+        val buffer = channel.map(FileChannel.MapMode.READ_ONLY, position, size)
+        position += size
+
+        buffer
+    }
+
+    return buffers
+}
+
+fun parseTextPart(buffer: MappedByteBuffer, endChar: Char): String {
+    val bytes = ByteArray(128)
+    var position = 0
+
+    while (buffer.hasRemaining()) {
+        val char = buffer.get()
+
+        if (char.toInt().toChar() == endChar) {
+            break
+        }
+
+        bytes[position++] = char
+    }
+
+    return String(
+        bytes,
+        offset = 0,
+        length = position,
+    )
+}
+
+fun parseNumberBufferBytes(buffer: MappedByteBuffer): Int {
+    var number = 0
+    var negative = 1
+
+    while (buffer.hasRemaining()) {
+        val charInt = buffer.get().toInt()
+
+        // fuck you windows
+        if (charInt == 13 /* \r */) {
+            continue
+        }
+
+        if (charInt == 10 /* \n */) {
+            break
+        }
+
+        if (charInt == 45 /* - */) {
+            negative = -1
+            continue
+        }
+
+        if (charInt == 46 /* . */) {
+            continue
+        }
+
+        number = number * 10 + (charInt - 48 /* '0' */)
+    }
+
+    return number * negative
+}
+
+fun parseLine(buffer: MappedByteBuffer): Pair<String, Int> {
+    val station = parseTextPart(buffer, ';')
+    val value = parseNumberBufferBytes(buffer)
+
+    return station to value
+}
+
+suspend fun calculateMeasurements(buffers: Array<MappedByteBuffer>): Result {
+    val result = coroutineScope {
+        buffers.map { buffer ->
+            async {
+                val partialResult = Result()
+
+                while (buffer.hasRemaining()) {
+                    val (station, number) = parseLine(buffer)
+                    partialResult.add(station, number)
+                }
+
+                partialResult
+            }
+        }.awaitAll().fold(Result()) { acc, result ->
+            acc.merge(result)
+            acc
+        }
+    }
+
+    return result
+}
+
+suspend fun main() {
+    val filePath = Paths.get("./measurements.txt")
+    val chunks = Runtime.getRuntime().availableProcessors()
+
+    val startTime = System.nanoTime()
+
+    val channel = FileChannel.open(filePath, StandardOpenOption.READ)
+
+    val buffers = getBuffers(channel, chunks)
+
+    val result = calculateMeasurements(buffers)
+
+    print(result)
+
+    val endTime = System.nanoTime()
+
+    println("\n\nProcessed ${channel.size() / 1_000_000_000.0}GB in ${(endTime - startTime) / 1_000_000_000.0}s using $chunks threads.")
+}
