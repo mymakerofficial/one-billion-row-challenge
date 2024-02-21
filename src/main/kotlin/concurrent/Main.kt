@@ -9,7 +9,6 @@ import java.nio.channels.FileChannel
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
 
-
 // store numbers as int to save memory
 data class StationData(
     var count: Int,
@@ -37,17 +36,25 @@ data class StationData(
 }
 
 class Result {
-    private val result = HashMap<String, StationData>(10000, 1f)
+    private val stationMap = HashMap<Int, String>(10000, 1f)
+    private val result = HashMap<Int, StationData>(10000, 1f)
 
-    fun add(station: String, number: Int) {
-        if (!result.contains(station)) {
-            result[station] = StationData(number)
-        } else {
-            result[station]!!.update(number)
+    fun add(hash: Int, station: String, number: Int) {
+        val values = result[hash] // this is very slow
+
+        if (values != null) {
+            values.update(number)
+            return
         }
+
+        stationMap[hash] = station
+        result[hash] = StationData(number)
     }
 
     fun merge(other: Result) {
+        other.stationMap.forEach { (hash, station) ->
+            stationMap[hash] = station
+        }
         other.result.forEach { (station, data) ->
             result.merge(station, data) { a, b ->
                 a.count += b.count
@@ -61,6 +68,7 @@ class Result {
 
     override fun toString(): String {
         return result
+            .mapKeys { stationMap[it.key]!! }
             .entries
             .sortedBy { it.key }
             .joinToString(
@@ -117,30 +125,9 @@ fun getBuffers(channel: FileChannel, chunks: Int): Array<MappedByteBuffer> {
     return buffers
 }
 
-fun parseTextPart(buffer: MappedByteBuffer, endChar: Char): String {
-    val bytes = ByteArray(128)
-    var position = 0
-
-    while (buffer.hasRemaining()) {
-        val char = buffer.get()
-
-        if (char.toInt().toChar() == endChar) {
-            break
-        }
-
-        bytes[position++] = char
-    }
-
-    return String(
-        bytes,
-        offset = 0,
-        length = position,
-    )
-}
-
 fun parseNumberBufferBytes(buffer: MappedByteBuffer): Int {
     var number = 0
-    var negative = 1
+    var sign = 1
 
     while (buffer.hasRemaining()) {
         val charInt = buffer.get().toInt()
@@ -155,7 +142,7 @@ fun parseNumberBufferBytes(buffer: MappedByteBuffer): Int {
         }
 
         if (charInt == 45 /* - */) {
-            negative = -1
+            sign = -1
             continue
         }
 
@@ -166,14 +153,7 @@ fun parseNumberBufferBytes(buffer: MappedByteBuffer): Int {
         number = number * 10 + (charInt - 48 /* '0' */)
     }
 
-    return number * negative
-}
-
-fun parseLine(buffer: MappedByteBuffer): Pair<String, Int> {
-    val station = parseTextPart(buffer, ';')
-    val value = parseNumberBufferBytes(buffer)
-
-    return station to value
+    return number * sign
 }
 
 suspend fun calculateMeasurements(buffers: Array<MappedByteBuffer>): Result {
@@ -182,9 +162,28 @@ suspend fun calculateMeasurements(buffers: Array<MappedByteBuffer>): Result {
             async {
                 val partialResult = Result()
 
+                val bytes = ByteArray(128)
+                var hash = 5381
+                var position = 0
                 while (buffer.hasRemaining()) {
-                    val (station, number) = parseLine(buffer)
-                    partialResult.add(station, number)
+                    val char = buffer.get()
+                    if (char.toInt() == 59 /* ; */) {
+                        val station = String(
+                            bytes,
+                            offset = 0,
+                            length = position,
+                        )
+
+                        val value = parseNumberBufferBytes(buffer)
+
+                        partialResult.add(hash, station, value)
+
+                        hash = 5381
+                        position = 0
+                    } else {
+                        hash = (hash * 33) xor char.toInt()
+                        bytes[position++] = char
+                    }
                 }
 
                 partialResult
