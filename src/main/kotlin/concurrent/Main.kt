@@ -86,26 +86,27 @@ class Result {
 }
 
 // find the position of the next line break
-fun findNextEndOfLine(channel: FileChannel, position: Long): Long {
-    var pos = position
+fun findNextEndOfLine(channel: FileChannel, initialPosition: Long): Long {
+    var position = initialPosition
 
     // create a buffer to hold the current byte
     val buffer = ByteBuffer.allocate(1)
 
-    while (pos < channel.size()) {
+    while (position < channel.size()) {
         // read the next byte
-        channel.read(buffer, pos)
+        channel.read(buffer, position)
 
-        pos++
+        position++
 
         // check if the byte is a line break
-        if (buffer.get(0).toInt().toChar() == '\n') {
-            return pos
+        if (buffer.get(0).toInt() == 10 /* \n */) {
+            return position
         }
 
         buffer.clear()
     }
 
+    // in case we didn't find a line break we return the end of the file
     return channel.size()
 }
 
@@ -113,19 +114,26 @@ fun getBuffers(channel: FileChannel, chunks: Int): Array<MappedByteBuffer> {
     val chunkSize = channel.size() / chunks
 
     var position = 0L
-    val buffers = Array<MappedByteBuffer>(chunks) {
+
+    return Array(chunks) {
+        // we can't split the chunks at random positions so we need to find the next line break
         val endPosition = findNextEndOfLine(channel, position + chunkSize)
         val size = endPosition - position
-        val buffer = channel.map(FileChannel.MapMode.READ_ONLY, position, size)
+
+        // map the chunk to memory
+        val buffer = channel.map(
+            FileChannel.MapMode.READ_ONLY,
+            position,
+            size
+        )
+
         position += size
 
         buffer
     }
-
-    return buffers
 }
 
-fun parseNumberBufferBytes(buffer: MappedByteBuffer): Int {
+fun parseNumberFromByteBuffer(buffer: MappedByteBuffer): Int {
     var number = 0
     var sign = 1
 
@@ -174,7 +182,7 @@ suspend fun calculateMeasurements(buffers: Array<MappedByteBuffer>): Result {
                             length = position,
                         )
 
-                        val value = parseNumberBufferBytes(buffer)
+                        val value = parseNumberFromByteBuffer(buffer)
 
                         partialResult.add(hash, station, value)
 
