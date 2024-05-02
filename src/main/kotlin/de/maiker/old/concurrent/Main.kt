@@ -1,4 +1,4 @@
-package de.maiker.concurrent
+package de.maiker.old.concurrent
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll

@@ -1,4 +1,4 @@
-package de.maiker.bad
+package de.maiker.old.bad
 
 import java.io.File
 import java.util.*
