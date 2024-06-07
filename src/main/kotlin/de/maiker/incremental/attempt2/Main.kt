@@ -3,7 +3,14 @@ package de.maiker.incremental.attempt2
 import java.io.File
 import java.util.*
 
+fun formatData(min: Double, mean: Double, max: Double): String {
+    // use Locale.ROOT so that the decimal separator is always a dot
+    return String.format(locale = Locale.ROOT, "%.1f/%.1f/%.1f", min, mean, max)
+}
+
 fun main() {
+    val startTime = System.nanoTime()
+
     val stations = mutableMapOf<String, MutableList<Double>>()
 
     File("./measurements.txt")
@@ -11,8 +18,8 @@ fun main() {
             val (stationName, valueStr) = it.split(";")
             val value = valueStr.toDouble()
 
-            val listOfValues = stations.getOrPut(stationName) { mutableListOf() }
-            listOfValues.add(value)
+            stations.getOrPut(stationName) { mutableListOf() }
+                .add(value)
         }
 
     val results = stations
@@ -21,9 +28,12 @@ fun main() {
             val max = values.max()
             val mean = values.average()
 
-            String.format(locale = Locale.ROOT, "%.1f/%.1f/%.1f", min, mean, max)
+            formatData(min, mean, max)
         }
         .toSortedMap()
 
     println(results)
+
+    val endTime = System.nanoTime()
+    println("Took ${(endTime - startTime) / 1_000_000} ms")
 }
