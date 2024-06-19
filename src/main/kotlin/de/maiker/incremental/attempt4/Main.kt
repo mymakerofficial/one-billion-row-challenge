@@ -1,15 +1,11 @@
 package de.maiker.incremental.attempt4
 
-import java.io.RandomAccessFile
-import java.lang.foreign.Arena
-import java.lang.foreign.MemorySegment
-import java.lang.foreign.ValueLayout
-import java.nio.channels.FileChannel
+import java.io.File
 import java.util.*
 
 data class StationData(
-    var min: Int = 0,
-    var max: Int = 0,
+    var min: Int = Int.MAX_VALUE,
+    var max: Int = Int.MIN_VALUE,
     var sum: Int = 0,
     var count: Int = 0
 ) {
@@ -19,74 +15,57 @@ data class StationData(
     }
 }
 
+fun parseNumber(input: String): Int {
+    var isNegative = false
+    var number = 0
+    var index = 0
+
+    if (input[0] == '-') {
+        isNegative = true
+        index = 1
+    }
+
+    var char: Char
+    while (index < input.length) {
+        char = input[index]
+        index++
+
+        if (char == '.') {
+            continue
+        }
+
+        number = number * 10 + (char.code - 48 /* '0' */)
+    }
+
+    return if (isNegative) -number else number
+}
+
 fun main() {
     val startTime = System.nanoTime()
 
     val stations = mutableMapOf<String, StationData>()
 
-    val channel = RandomAccessFile("./measurements.txt", "r").getChannel()
-    val memorySegment = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size(), Arena.ofShared())
+    File("./measurements.txt")
+        .forEachLine {
+            val (stationName, valueStr) = it.split(";")
+            val value = parseNumber(valueStr)
 
-    val size = channel.size()
+            val stationData = stations.getOrPut(stationName) { StationData() }
 
-    var position = 0L
-
-    fun readName(memorySegment: MemorySegment): String {
-        val data = ByteArray(100)
-        var length = 0
-        while (position < size) {
-            val byte = memorySegment.getAtIndex(ValueLayout.JAVA_BYTE, position)
-            position++
-
-            if (byte == 59.toByte()) {
-                break
+            if (value < stationData.min) {
+                stationData.min = value
             }
-
-            data[length++] = byte
+            if (value > stationData.max) {
+                stationData.max = value
+            }
+            stationData.sum += value
+            stationData.count++
         }
-        return String(data, 0, length)
-    }
 
-    fun readNumber(memorySegment: MemorySegment): Int {
-        var number = 0
-        var sign = 1
-        while (position < size) {
-            val byte = memorySegment.getAtIndex(ValueLayout.JAVA_BYTE, position)
-            position++
+    val results = stations.toSortedMap()
 
-            if (byte == 10.toByte()) {
-                break
-            }
-
-            if (byte == 45.toByte()) {
-                sign = -1
-                continue
-            }
-
-            if (byte == 46.toByte()) {
-                continue
-            }
-
-            number = number * 10 + (byte - 48)
-        }
-        return number * sign
-    }
-
-    while (position < size) {
-        val stationName = readName(memorySegment)
-        val value = readNumber(memorySegment)
-
-        val stationData = stations.getOrPut(stationName) { StationData() }
-
-        if (value < stationData.min) { stationData.min = value }
-        if (value > stationData.max) { stationData.max = value }
-        stationData.sum += value
-        stationData.count++
-    }
-
-    println(stations.toSortedMap())
+    println(results)
 
     val endTime = System.nanoTime()
     println("Took ${(endTime - startTime) / 1_000_000} ms")
 }
-

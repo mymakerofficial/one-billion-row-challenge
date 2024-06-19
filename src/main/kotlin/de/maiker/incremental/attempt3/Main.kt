@@ -9,8 +9,8 @@ fun formatData(min: Double, mean: Double, max: Double): String {
 }
 
 data class StationData(
-    var min: Double = .0,
-    var max: Double = .0,
+    var min: Double = Double.MAX_VALUE,
+    var max: Double = Double.MIN_VALUE,
     var sum: Double = .0,
     var count: Int = 0
 ) {
