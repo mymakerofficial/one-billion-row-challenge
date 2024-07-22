@@ -29,12 +29,14 @@ fun main() {
     val size = channel.size()
     var position = 0L
 
-    val nameBuffer = ByteArray(100)
+    var byte: Byte
+
+    val nameBuffer = ByteArray(32)
     var nameLength: Int
     fun readName(): String {
         nameLength = 0
         while (position < size) {
-            val byte = memorySegment.getAtIndex(ValueLayout.JAVA_BYTE, position)
+            byte = memorySegment.getAtIndex(ValueLayout.JAVA_BYTE, position)
             position++
 
             if (byte == 59.toByte() /* ';' */) {
@@ -52,14 +54,20 @@ fun main() {
         isNegative = false
         number = 0
 
-        if (memorySegment.getAtIndex(ValueLayout.JAVA_BYTE, position) == 45.toByte() /* '-' */) {
+        byte = memorySegment.getAtIndex(ValueLayout.JAVA_BYTE, position)
+
+        if (byte == 45.toByte() /* '-' */) {
             isNegative = true
             position++
         }
 
         while (position < size) {
-            val byte = memorySegment.getAtIndex(ValueLayout.JAVA_BYTE, position)
+            byte = memorySegment.getAtIndex(ValueLayout.JAVA_BYTE, position)
             position++
+
+            if (byte == 13.toByte() /* \r */) {
+                continue
+            }
 
             if (byte == 10.toByte() /* \n */) {
                 break

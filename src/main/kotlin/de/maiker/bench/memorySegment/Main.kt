@@ -9,7 +9,7 @@ import java.nio.channels.FileChannel
 fun main() {
     val startTime = System.nanoTime()
 
-    val channel = RandomAccessFile("./measurements-small.txt", "r").getChannel()
+    val channel = RandomAccessFile("./measurements.txt", "r").getChannel()
     val memorySegment = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size(), Arena.ofShared())
 
     for (index in 1 until channel.size()) {

@@ -8,7 +8,7 @@ import java.nio.channels.FileChannel
 fun main() {
     val startTime = System.nanoTime()
 
-    val channel = RandomAccessFile("./measurements-small.txt", "r").getChannel()
+    val channel = RandomAccessFile("./measurements.txt", "r").getChannel()
     val mappedByteBuffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size())
 
     while (mappedByteBuffer.hasRemaining()) {

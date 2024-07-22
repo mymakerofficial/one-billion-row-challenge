@@ -33,6 +33,8 @@ fun main() {
     val endAddress = startAddress + memorySegment.byteSize()
     var address = startAddress
 
+    var byte: Byte
+
     val stations = mutableMapOf<String, StationData>()
 
     val nameBuffer = ByteArray(100)
@@ -40,10 +42,10 @@ fun main() {
     fun readName(): String {
         nameLength = 0
         while (address < endAddress) {
-            val byte = unsafe.getByte(address)
+            byte = unsafe.getByte(address)
             address++
 
-            if (byte == 59.toByte()) {
+            if (byte == 59.toByte() /* ';' */) {
                 break
             }
 
@@ -58,14 +60,19 @@ fun main() {
         isNegative = false
         number = 0
 
-        if (unsafe.getByte(address) == 45.toByte() /* '-' */) {
+        byte = unsafe.getByte(address)
+        if (byte == 45.toByte() /* '-' */) {
             isNegative = true
             address++
         }
 
         while (address < endAddress) {
-            val byte = unsafe.getByte(address)
+            byte = unsafe.getByte(address)
             address++
+
+            if (byte == 13.toByte() /* \r */) {
+                continue
+            }
 
             if (byte == 10.toByte() /* \n */) {
                 break
