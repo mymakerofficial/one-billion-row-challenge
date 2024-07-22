@@ -1,5 +1,6 @@
 package de.maiker.incremental.attempt5.unsafe
 
+import de.maiker.util.printTime
 import sun.misc.Unsafe
 import java.io.RandomAccessFile
 import java.lang.foreign.Arena
@@ -23,7 +24,7 @@ fun main() {
 
     val unsafe = Unsafe::class.java.getDeclaredField("theUnsafe").let {
         it.isAccessible = true
-        it.get(null) as Unsafe
+        it.get(Unsafe::class) as Unsafe
     }
 
     val channel = RandomAccessFile("./measurements.txt", "r").getChannel()
@@ -102,7 +103,6 @@ fun main() {
 
     println(stations.toSortedMap())
 
-    val endTime = System.nanoTime()
-    println("Took ${(endTime - startTime) / 1_000_000} ms")
+    printTime(startTime)
 }
 

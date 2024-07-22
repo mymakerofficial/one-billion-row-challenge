@@ -1,5 +1,6 @@
 package de.maiker.incremental.attempt3
 
+import de.maiker.util.printTime
 import java.io.File
 import java.util.*
 
@@ -45,6 +46,5 @@ fun main() {
 
     println(results)
 
-    val endTime = System.nanoTime()
-    println("Took ${(endTime - startTime) / 1_000_000} ms")
+    printTime(startTime)
 }

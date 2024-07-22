@@ -1,5 +1,6 @@
 package de.maiker.incremental.attempt5
 
+import de.maiker.util.printTime
 import java.io.RandomAccessFile
 import java.lang.foreign.Arena
 import java.lang.foreign.ValueLayout
@@ -97,7 +98,6 @@ fun main() {
 
     println(stations.toSortedMap())
 
-    val endTime = System.nanoTime()
-    println("Took ${(endTime - startTime) / 1_000_000} ms")
+    printTime(startTime)
 }
 
