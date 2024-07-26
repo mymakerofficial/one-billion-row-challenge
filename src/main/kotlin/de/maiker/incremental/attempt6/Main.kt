@@ -11,8 +11,7 @@ import java.util.*
 
 
 data class StationData(
-    var nameAddress: Long = 0,
-    var nameLength: Int = 0,
+    var name: String,
     var min: Int = Int.MAX_VALUE,
     var max: Int = Int.MIN_VALUE,
     var sum: Int = 0,
@@ -47,20 +46,24 @@ fun main() {
 
     val stations = mutableMapOf<Int, StationData>()
 
-    var nameLength = 0
+    val SEMICOLON = 59.toByte() /* ';' */
+    val DASH = 45.toByte() /* '-' */
+    val NEWLINE = 10.toByte() /* \n */
+    val DOT = 46.toByte() /* '.' */
+
+    var nameLength = 0L
     var hash: Int
     fun readName(): Int {
         nameLength = 0
         hash = 5381
-        while (address < endAddress) {
+        while (true) { // no need to check, we will always hit the ';'
             byte = unsafe.getByte(address)
             address++
 
-            if (byte == 59.toByte() /* ';' */) {
+            if (byte == SEMICOLON /* ';' */) {
                 break
             }
 
-            // TODO is not sortable
             hash = (((hash shl 5) + hash) + byte)
             nameLength++
         }
@@ -74,24 +77,20 @@ fun main() {
         number = 0
 
         byte = unsafe.getByte(address)
-        if (byte == 45.toByte() /* '-' */) {
+        if (byte == DASH /* '-' */) {
             isNegative = true
             address++
         }
 
-        while (address < endAddress) {
+        while (true) { // no need to check, we will always hit the new line
             byte = unsafe.getByte(address)
             address++
 
-            if (byte == 13.toByte() /* \r */) {
-                continue
-            }
-
-            if (byte == 10.toByte() /* \n */) {
+            if (byte == NEWLINE /* \n */) {
                 break
             }
 
-            if (byte == 46.toByte() /* '.' */) {
+            if (byte == DOT /* '.' */) {
                 continue
             }
 
@@ -101,16 +100,21 @@ fun main() {
         return if (isNegative) -number else number
     }
 
+    val ARRAY_BYTE_BASE_OFFSET = Unsafe.ARRAY_BYTE_BASE_OFFSET.toLong()
+    val nameBuffer = ByteArray(100)
     var nameStartAddress: Long
     while (address < endAddress) {
         nameStartAddress = address
         val hash = readName()
         val value = readNumber()
 
-        val stationData = stations.getOrPut(hash) { StationData(
-            nameStartAddress,
-            nameLength
-        ) }
+        val stationData = stations.getOrPut(hash) {
+            unsafe.copyMemory(null, nameStartAddress, nameBuffer, ARRAY_BYTE_BASE_OFFSET, nameLength)
+
+            StationData(
+                name = String(nameBuffer, 0, nameLength.toInt(), StandardCharsets.UTF_8)
+            )
+        }
 
         if (value < stationData.min) { stationData.min = value }
         if (value > stationData.max) { stationData.max = value }
@@ -119,34 +123,24 @@ fun main() {
     }
 
     println(stations.mapKeys {
-        val name = ByteArray(it.value.nameLength)
-        unsafe.copyMemory(null, it.value.nameAddress, name, Unsafe.ARRAY_BYTE_BASE_OFFSET.toLong(), it.value.nameLength.toLong())
-        String(name, StandardCharsets.UTF_8)
-    }.entries.sortedBy { it.key }.joinToString(
-        separator = ", ",
-        prefix = "{",
-        postfix = "}"
-    ) { (name, data) ->
-        "${name}=${data}"
-    })
+        it.value.name
+    }.toSortedMap())
 
     printTime(startTime)
 
     val actual = stations.mapKeys {
-        val name = ByteArray(it.value.nameLength)
-        unsafe.copyMemory(null, it.value.nameAddress, name, Unsafe.ARRAY_BYTE_BASE_OFFSET.toLong(), it.value.nameLength.toLong())
-        String(name, StandardCharsets.UTF_8)
-    }.entries.sortedBy { it.key }.joinToString(
-        separator = ", ",
-        prefix = "{",
-        postfix = "}"
-    ) { (name, data) ->
-        "${name}=${data}"
-    }
+        it.value.name
+    }.toSortedMap().toString()
     File(output).bufferedReader().use { reader ->
         val expected = reader.readText()
         println("Expected:\t $expected")
         println("Actual:\t\t $actual")
+
+        if (expected == actual) {
+            println("SUCCESS")
+        } else {
+            println("FAILURE")
+        }
     }
 }
 
