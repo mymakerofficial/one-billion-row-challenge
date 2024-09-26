@@ -1,4 +1,4 @@
-package de.maiker.incremental.attempt7
+package de.maiker.incremental.attempt8
 
 import de.maiker.util.printTime
 import kotlinx.coroutines.async
@@ -24,26 +24,26 @@ data class StationData(
     }
 }
 
-val SEMICOLON = 59.toByte() /* ';' */
-val DASH = 45.toByte() /* '-' */
-val NEWLINE = 10.toByte() /* \n */
-val DOT = 46.toByte() /* '.' */
-val ARRAY_BYTE_BASE_OFFSET = Unsafe.ARRAY_BYTE_BASE_OFFSET.toLong()
-
-val unsafe = Unsafe::class.java.getDeclaredField("theUnsafe").let {
-    it.isAccessible = true
-    it.get(Unsafe::class) as Unsafe
-}
-
 class Reader(
     startAddress: Long,
     private val endAddress: Long,
     isFileStart: Boolean = false
 ) {
+    companion object {
+        val SEMICOLON = 59.toByte() /* ';' */
+        val DASH = 45.toByte() /* '-' */
+        val NEWLINE = 10.toByte() /* \n */
+        val DOT = 46.toByte() /* '.' */
+        val ARRAY_BYTE_BASE_OFFSET = Unsafe.ARRAY_BYTE_BASE_OFFSET.toLong()
+
+        val unsafe = Unsafe::class.java.getDeclaredField("theUnsafe").let {
+            it.isAccessible = true
+            it.get(Unsafe::class) as Unsafe
+        }
+    }
+
     private var address = startAddress
     private var byte: Byte = 0
-
-    fun hasRemaining(): Boolean = address < endAddress
 
     init {
         if (!isFileStart) {
@@ -58,6 +58,8 @@ class Reader(
             }
         }
     }
+
+    fun hasRemaining(): Boolean = address < endAddress
 
     private var nameStartAddress = 0L
     private var nameLength = 0L
@@ -119,7 +121,7 @@ class Reader(
     }
 }
 
-suspend fun main() {
+suspend fun main() = coroutineScope {
     val startTime = System.nanoTime()
 
     val channel = RandomAccessFile("measurements.txt", "r").getChannel()
@@ -131,31 +133,19 @@ suspend fun main() {
     val chunkCount = Runtime.getRuntime().availableProcessors()
     val chunkSize = channel.size() / chunkCount
 
-    val stations = processAll(
-        startAddress,
-        endAddress,
-        chunkCount,
-        chunkSize
-    )
-
-    println(stations.mapKeys {
-        it.value.name
-    }.toSortedMap())
+    (0..chunkCount)
+        .map { index -> async {
+            val chunkStart = startAddress + index * chunkSize
+            val chunkEnd = minOf(chunkStart + chunkSize, endAddress)
+            processChunk(chunkStart, chunkEnd, isFileStart = index == 0)
+        } }
+        .awaitAll()
+        .fold(mutableMapOf(), ::merge)
+        .mapKeys { it.value.name }
+        .toSortedMap()
+        .also { println(it) }
 
     printTime(startTime)
-}
-
-suspend fun processAll(
-    startAddress: Long,
-    endAddress: Long,
-    chunkCount: Int,
-    chunkSize: Long
-) = coroutineScope {
-    (0 until chunkCount).map { chunkIndex ->
-        val chunkStart = startAddress + chunkIndex * chunkSize
-        val chunkEnd = minOf(endAddress, chunkStart + chunkSize) // maybe we are not lucky
-        async { processChunk(chunkStart, chunkEnd, isFileStart = chunkIndex == 0) }
-    }.awaitAll().fold(mutableMapOf(), ::merge)
 }
 
 fun processChunk(startAddress: Long, endAddress: Long, isFileStart: Boolean): MutableMap<Int, StationData> {
